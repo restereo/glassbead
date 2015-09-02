@@ -3,6 +3,15 @@
 #include<vector>
 #include<stdio.h>
 #include <sys/time.h>
+#include <sys/types.h>
+
+#include <stdlib.h>
+#include <netdb.h>
+
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
 
 using namespace std;
 using namespace cv;
@@ -618,7 +627,7 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>*
   // char[][] board= new char[19][19];
   vector< vector<char> > board;
 
-  board.resize(21, vector<char>(21, '*'));
+  board.resize(20, vector<char>(19, '*'));
   Point p;
 
   for (int i = 1; i < hlines->size() - 1; i++) {
@@ -648,6 +657,73 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>*
 
 }
 
+
+FILE * _sock;
+
+char* _addr = "192.168.12.11";
+
+FILE * initSocket() {
+
+  struct sockaddr_in addr;
+  struct hostent *server;
+
+  memset(&addr, 0, sizeof(addr));
+
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(7777);
+
+  int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+  if (sock_fd<0) {
+    printf("ERROR open socket");
+  }
+
+  server = gethostbyname(_addr);
+
+  if (server == NULL) {
+    printf("no such host");
+    exit(1);
+  }
+
+  // inet_pton(AF_INET, "192.168.12.19", &addr.sin_addr.s_addr);
+
+  bcopy((char *)server->h_addr, (char *)&addr.sin_addr.s_addr, server->h_length);
+
+  int e = connect(sock_fd, (struct sockaddr*) &addr, sizeof(addr));
+
+  if (e < 0) {
+    printf("\n\nerorr connecting: %d\n\n", e);
+    exit(1);
+  }
+
+  FILE *fd = fdopen(sock_fd, "w");
+  if (fd == NULL) {
+    printf("Could not fdopen socket\n");
+    exit(1);
+  }
+  return fd;
+}
+
+char* _empty_line = "\n\n";
+
+void sendToSocket(FILE* fd,vector<vector<char> >& buf) {
+
+  int _s = buf[0].size();
+
+  for (int i = 0; i < 19; i++)
+  {
+    for (int j = 0; j < 19; j++)
+    {
+      fputc(buf[i][j], fd);
+    }
+    // fprintf(fd,"blablabla\n");
+  }
+
+  int t = fwrite(_empty_line, 1, 2, fd);
+  printf("fwrite: %d\n",t);
+  fflush(fd);
+}
+
 int main(int argc, char *argv[])
 {
     cv::Mat frame;
@@ -657,6 +733,8 @@ int main(int argc, char *argv[])
     cv::Mat output;
 
     cv::Mat frame_tm;
+
+    _sock = initSocket();
 
 //    cv::VideoCapture cap(1);
 //    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
@@ -867,6 +945,7 @@ int main(int argc, char *argv[])
             printf("\n");
           }
 
+          sendToSocket(_sock, board);
 
         }
 
