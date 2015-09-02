@@ -134,6 +134,9 @@ void polarLine(Mat dst, Vec2f lp) {
 }
 
 Point intersect(Vec2f a, Vec2f b) {
+
+  printf("line h: %1.f %1.f\n", a[0], a[1]);
+
    float x1 = a[0]*cos(a[1]);
    float y1 = a[0]*sin(a[1]);
 
@@ -145,8 +148,11 @@ Point intersect(Vec2f a, Vec2f b) {
    float x = x2 + t2*sin(b[1]);
    float y = y2 - t2*cos(b[1]);
 
-//   printf("(x,y) = (%1.f, %1.f)\n", x, y);
-   return Point(cvRound(x), cvRound(y));
+   printf("(x,y) = (%1.f, %1.f)\n", x, y);
+
+   Point p = Point(floor(x + 0.5), floor(y  + 0.5));
+
+   return p;
 }
 
 /*
@@ -561,10 +567,10 @@ void dumpLines(vector<Vec4i*> lines) {
 
 char getPixelAtPoint(Mat img, Point p) {
 
-  int x = (int) p[0];
-  int y = (int) p[1];
 
-  Scalar intensity = img.at<uchar>(y, x);
+  printf("getPixelAtPoint: %d %d", p.x, p.y);
+
+  Scalar intensity = img.at<uchar>(p);
 
   int i = intensity.val[0]; // from 0 to 255
 
@@ -579,7 +585,7 @@ char getPixelAtPoint(Mat img, Point p) {
   }
 
   if (i < 10 ) {
-    return 'B'
+    return 'B';
   }
 
   return '.';
@@ -589,11 +595,39 @@ char getPixelAtPoint(Mat img, Point p) {
 /*!
  * На вход нужны картинка и решетка
  */
-vector<vector<char>> getBoard(Mat img, vector<Vec2f> hlines, vector<Vec2f> vlines) {
+vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>* vlines) {
+
+  // assert(hlines.size(), 21);
+  // assert(vlines.size(), 21);
+
+  // char[][] board= new char[19][19];
+  vector< vector<char> > board;
+
+  board.resize(21, vector<char>(21, '.'));
+  Point p;
+
+  for (int i = 1; i < hlines->size() - 1; i++) {
+
+    vector<char> line;
+
+    for (int j = 1; j < vlines->size() - 1; j++) {
+
+      // printf("hline: %2.f %2.f\n", hlines[i][0], hlines[i][1]);
+      // printf("vline: %2.f %2.f\n", vlines[j][0], vlines[j][1]);
+      printf("got lines\n");
+
+      p = intersect((*hlines)[i], (*vlines)[j]);
+
+      printf("point: %d %d \n", p.x, p.y);
 
 
-  // TODO
+      line.push_back(getPixelAtPoint(img, p));
 
+    }
+    board.push_back(line);
+  }
+
+  return board;
 
 }
 
@@ -796,6 +830,27 @@ int main(int argc, char *argv[])
         float SomeThresh = 2.0;
         printf("f_dr_avg: %2.2f, thresh: %2.2f\n",f_dr_avg, SomeThresh);
         makeSomeGrid(hlines2,vlines2, f_dr_avg, dst, SomeThresh);
+
+
+
+        if ((hlines2.size() == 21) && (vlines2.size() == 21)) {
+
+          // char board[19][19];
+
+          vector <vector <char> > board = getBoard(src_gray, &hlines2, &vlines2);
+
+
+          for (int i = 0; i < 19; i++)
+          {
+            for (int j = 0; j < 19;j++)
+            {
+              // printf("%s", board[i][j]);
+            }
+            printf("\n");
+          }
+
+
+        }
 
 
 /*
