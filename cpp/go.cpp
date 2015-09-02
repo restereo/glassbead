@@ -135,7 +135,7 @@ void polarLine(Mat dst, Vec2f lp) {
 
 Point intersect(Vec2f a, Vec2f b) {
 
-  printf("line h: %1.f %1.f\n", a[0], a[1]);
+  // printf("line h: %1.f %1.f\n", a[0], a[1]);
 
    float x1 = a[0]*cos(a[1]);
    float y1 = a[0]*sin(a[1]);
@@ -148,7 +148,7 @@ Point intersect(Vec2f a, Vec2f b) {
    float x = x2 + t2*sin(b[1]);
    float y = y2 - t2*cos(b[1]);
 
-   printf("(x,y) = (%1.f, %1.f)\n", x, y);
+   // printf("(x,y) = (%1.f, %1.f)\n", x, y);
 
    Point p = Point(floor(x + 0.5), floor(y  + 0.5));
 
@@ -565,14 +565,29 @@ void dumpLines(vector<Vec4i*> lines) {
 
 
 
-char getPixelAtPoint(Mat img, Point p) {
+char getPixelAtPoint(Mat img, Point p, int delta) {
 
 
-  printf("getPixelAtPoint: %d %d", p.x, p.y);
+  // printf("getPixelAtPoint: %d %d", p.x, p.y);
 
   Scalar intensity = img.at<uchar>(p);
 
-  int i = intensity.val[0]; // from 0 to 255
+  int _i = intensity.val[0]; // from 0 to 255
+
+  int i_point = _i;
+
+  for (int i = -delta; i < delta; i++)
+  {
+    for (int j = -delta; j < delta; j++)
+    {
+      Scalar __i = img.at<uchar>(p);
+
+      // int i = intensity.val[0];
+      _i = floor((_i + __i.val[0])/2);
+    }
+  }
+
+  printf("intencity: %d (%d) ", _i, i_point);
 
   // Vec3f intensity = img.at<Vec3f>(y, x);
   // float blue = intensity.val[0];
@@ -580,15 +595,15 @@ char getPixelAtPoint(Mat img, Point p) {
   // float red = intensity.val[2];
   // float sum = blue + green + red;
 
-  if (i > 250 ) {
+  if (_i > 190 ) {
     return 'W';
   }
 
-  if (i < 10 ) {
+  if (_i < 50 ) {
     return 'B';
   }
 
-  return '.';
+  return '*';
 
 }
 
@@ -603,28 +618,30 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>*
   // char[][] board= new char[19][19];
   vector< vector<char> > board;
 
-  board.resize(21, vector<char>(21, '.'));
+  board.resize(21, vector<char>(21, '*'));
   Point p;
 
   for (int i = 1; i < hlines->size() - 1; i++) {
-
-    vector<char> line;
 
     for (int j = 1; j < vlines->size() - 1; j++) {
 
       // printf("hline: %2.f %2.f\n", hlines[i][0], hlines[i][1]);
       // printf("vline: %2.f %2.f\n", vlines[j][0], vlines[j][1]);
-      printf("got lines\n");
+      // printf("got lines\n");
 
       p = intersect((*hlines)[i], (*vlines)[j]);
 
-      printf("point: %d %d \n", p.x, p.y);
+      // printf("point: %d %d \n", p.x, p.y);
 
 
-      line.push_back(getPixelAtPoint(img, p));
+      char c = getPixelAtPoint(img, p, 3);
+
+      printf("%c\n", c);
+
+      board[i][j] = c;
 
     }
-    board.push_back(line);
+    // board.push_back(_line);
   }
 
   return board;
@@ -840,11 +857,12 @@ int main(int argc, char *argv[])
           vector <vector <char> > board = getBoard(src_gray, &hlines2, &vlines2);
 
 
+          printf("\n");
           for (int i = 0; i < 19; i++)
           {
             for (int j = 0; j < 19;j++)
             {
-              // printf("%s", board[i][j]);
+              printf("%c", board[i][j]);
             }
             printf("\n");
           }
