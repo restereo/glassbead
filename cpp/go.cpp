@@ -558,6 +558,45 @@ void dumpLines(vector<Vec4i*> lines) {
 }
 
 
+
+char getPixelAtPoint(Mat img, Point p) {
+
+  int x = (int) p[0];
+  int y = (int) p[1];
+
+  Scalar intensity = img.at<uchar>(y, x);
+
+  int i = intensity.val[0]; // from 0 to 255
+
+  // Vec3f intensity = img.at<Vec3f>(y, x);
+  // float blue = intensity.val[0];
+  // float green = intensity.val[1];
+  // float red = intensity.val[2];
+  // float sum = blue + green + red;
+
+  if (i > 250 ) {
+    return 'W';
+  }
+
+  if (i < 10 ) {
+    return 'B'
+  }
+
+  return '.';
+
+}
+
+/*!
+ * На вход нужны картинка и решетка
+ */
+vector<vector<char>> getBoard(Mat img, vector<Vec2f> hlines, vector<Vec2f> vlines) {
+
+
+  // TODO
+
+
+}
+
 int main(int argc, char *argv[])
 {
     cv::Mat frame;
