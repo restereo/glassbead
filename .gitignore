@@ -1,6 +1,14 @@
 
 .DS_Store
 
+cpp/CMakeFiles*
+
 cpp/cmake_install.cmake
 
 cpp/CMakeCache.txt
+
+cpp/video.avi
+
+cpp/mog.avi
+
+cpp/Makefile
