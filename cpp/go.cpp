@@ -722,7 +722,7 @@ char getPixelAtPoint(Mat img, Point p, int delta) {
     }
   }
 
-  printf("intencity: %d (%d) ", _i, i_point);
+  printf("intensity: %d (%d) ", _i, i_point);
 
   // Vec3f intensity = img.at<Vec3f>(y, x);
   // float blue = intensity.val[0];
@@ -857,7 +857,6 @@ void sendToSocket(FILE* fd,vector<vector<char> >& buf) {
   }
 
   int t = fwrite(_empty_line, 1, 2, fd);
-  printf("fwrite: %d\n",t);
   fflush(fd);
 }
 
