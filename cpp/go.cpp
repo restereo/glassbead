@@ -185,9 +185,9 @@ int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
       return DIST_TOOCLOSE;
   } else if (fabs(dr-f_dr) < threshold) {
       return DIST_ONE;
-  } else if (fabs(dr - 2*f_dr) < 1.5*threshold) {
+  } else if ((fabs(dr - 2.0*f_dr) < 1.8*threshold) || ((fabs(dr - 2.0*f_dr) < 3.0*threshold)&&(dr>2.0*f_dr))) {
       return DIST_TWO;
-  } else if (fabs(dr - 3*f_dr) < 2.5*threshold) {
+  } else if ((fabs(dr - 3.0*f_dr) < 3.5*threshold) || ((fabs(dr - 3.0*f_dr) < 4.0*threshold)&&(dr>3.0*f_dr))) {
       return DIST_THREE;
   }
   if (dr > 3*f_dr) return DIST_TOO_LONG;
@@ -350,7 +350,8 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
   for(size_t j=0;j<hlines2.size();j++) {
     if (j>0) {
       float dr = fabs(hlines2[j-1][0] - hlines2[j][0]);
-      if (status[j-1]==STATUS_REMOVE || (status[j]!=STATUS_REMOVE && status[j-1]==STATUS_REMOVE) || (status[j] == STATUS_REMOVE && status[j-1]!=STATUS_REMOVE)) printf(" [%2.2f] ", dr);
+//      if (status[j-1]==STATUS_REMOVE || (status[j]!=STATUS_REMOVE && status[j-1]==STATUS_REMOVE) || (status[j] == STATUS_REMOVE && status[j-1]!=STATUS_REMOVE))
+      printf(" [%2.2f] ", dr);
     } else {
 //      float dr = fabs(hlines2[0][0] - hlines2[1][0]);
 //      if (status[j]==0) printf("[%2.2f] ", dr);
@@ -644,7 +645,7 @@ vector<Vec2f> findHLines(vector<Vec4i> lines, float ang_threshold, float maxA) {
         return hlines;
 }
 
-vector<Vec2f> filterHLines(vector<Vec2f> hlines, int merge_dist) {
+vector<Vec2f> filterHLines(vector<Vec2f> hlines, float merge_dist) {
         vector<Vec2f> hlines2;
 
         Vec2f last_lp = Vec2f(0,0);
@@ -1011,7 +1012,7 @@ int main(int argc, char *argv[])
 
 //2: hough
 
-        int maxangle = 180; //360 => 0.5 degree angle step
+        int maxangle = 360; //360 => 0.5 degree angle step
         double rho=2.0;
         double theta = CV_PI/(float)maxangle;
         int threshold = 150;
@@ -1040,14 +1041,15 @@ int main(int argc, char *argv[])
         /* fixme: only supports 180 buckets */
         float maxA = findBestAngle(lines, maxangle); //180/2 degree values
 
-        vector<Vec2f> hlines = findHLines(lines, 3, maxA);
-        vector<Vec2f> vlines = findHLines(lines, 3, maxA+90);
+        vector<Vec2f> hlines = findHLines(lines, 3.0, maxA);
+        vector<Vec2f> vlines = findHLines(lines, 3.0, maxA+90);
 
 //        vector<Vec2f> hlines2 = approxHLines(hlines, 0.3);
         printf("lines: h.size=%d v.size=%d\n", hlines.size(), vlines.size());
 
-        vector<Vec2f> hlines2 = filterHLines(hlines, 5);
-        vector<Vec2f> vlines2 = filterHLines(vlines, 5);
+        float merge_dist = 4.0;
+        vector<Vec2f> hlines2 = filterHLines(hlines, merge_dist);
+        vector<Vec2f> vlines2 = filterHLines(vlines, merge_dist);
 
         printf("lines2: h.size=%d v.size=%d\n", hlines2.size(), vlines2.size());
 
