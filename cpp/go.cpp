@@ -175,6 +175,7 @@ int solve(hlines, path) {
 #define DIST_ONE 1
 #define DIST_TWO 2
 #define DIST_THREE 3
+#define DIST_TOO_LONG 9
 
 int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
   float dr = fabs(a[0] - b[0]);
@@ -188,8 +189,15 @@ int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
   } else if (fabs(dr - 3*f_dr) < threshold) {
       return DIST_THREE;
   }
+  if (dr > 3*f_dr) return DIST_TOO_LONG;
   return DIST_BAD;
 }
+
+#define STATUS_REMOVE 0
+#define STATUS_OK 1
+#define STATUS_ADDONE 2
+#define STATUS_ADDTWO 3
+#define STATUS_ADDTHREE 3
 
 void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat dst, float threshold) {
 
@@ -199,17 +207,91 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
   //remove some lines;
   float prev_pushed_line = -1;
 
-  status[0] = 0;
+  status[0] = STATUS_REMOVE;
+
+  //pass1 for DIST_ONE
   for(size_t j=1;j<hlines2.size();j++) {
-      status[j] = 0;
+      status[j] = STATUS_REMOVE;
 
       int q = checkDist(hlines2[j-1],hlines2[j],f_dr,threshold);
       if (q == DIST_ONE) {
-        status[j-1] = 1;
-        status[j] = 1;
+        status[j-1] = STATUS_OK;
+        status[j] = STATUS_OK;
         continue;
       }
   }
+  //forward patching
+  for(size_t j=1;j<hlines2.size();j++) {
+    if ((status[j-1] == 1) && (status[j] == 1)) continue;
+    if ((status[j-1] == 1) && (status[j] == 0)) {
+      for(size_t k=j;k<hlines2.size(); k++) {
+        float dr = fabs(hlines2[k][0] - hlines2[j-1][0]);
+          if (dr < f_dr) continue; //skip a line
+          int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
+          printf("fj:%2d k:%2d st[j]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j],status[k], dr);
+          if (q==DIST_TWO) {
+            printf("fj: one@%d [%d]\n", k, status[k]);
+            status[k] = STATUS_ADDONE;
+            j=k;
+            break;
+          }
+          if (q==DIST_THREE) {
+            printf("fj: two@%d [%d]\n", k, status[k]);
+            status[k] = STATUS_ADDTWO;
+            j=k;
+            break;
+          }
+          if (q==DIST_TOO_LONG) {
+            break;
+          }
+      }
+    }
+  }
+  
+    //backward patching
+  for(size_t j=1;j<hlines2.size();j++) {
+    if ((status[j-1] == 0) && (status[j] == 1)) {
+      for(size_t k=j-1;k>0; k--) {
+        float dr = fabs(hlines2[k][0] - hlines2[j][0]);
+          if (dr < f_dr) continue; //skip a line
+          int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
+          printf("bj:%2d k:%2d st[j]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j],status[k], dr);
+          if (q==DIST_TWO) {
+            printf("bj: one@%d [%d]\n", j, status[j]);
+            status[j] = STATUS_ADDONE;
+            break;
+          }
+          if (q==DIST_THREE) {
+            printf("bj: two@%d [%d]\n", j, status[j]);
+            status[j] = STATUS_ADDTWO;
+            break;
+          }
+          if (q==DIST_TOO_LONG) {
+            break;
+          }
+      }
+    }
+
+  }
+  
+  for(size_t j=0;j<hlines2.size();j++) {
+    if (status[j] == STATUS_REMOVE) continue;
+    if (status[j] == STATUS_OK) {
+      hlines3.push_back(hlines2[j]);
+    }
+    if (status[j] == STATUS_ADDONE && (j>0)) {
+      for(size_t k=j-1;k>0;k--) {
+        printf("back: j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
+        if (status[k]!=STATUS_REMOVE) {
+          Vec2f lp = (hlines2[j]+hlines2[k])/2.0;
+          hlines3.push_back(lp);
+          hlines3.push_back(hlines2[j]);
+          break; //inner loop
+        }
+      }
+    }
+  }
+  
 
 /*
         if (dr < f_dr-2*threshold) {
@@ -241,14 +323,13 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
       prev_r = hlines2[j][0];
   */
 
-  int good_c = 0;
-  for(size_t j=0;j<hlines2.size();j++) if (status[j] == 1) good_c++;
+  int good_c = hlines3.size();
 
   printf("1d[%d/%d]: ",good_c,hlines2.size());
   for(size_t j=0;j<hlines2.size();j++) {
     if (j>0) {
       float dr = fabs(hlines2[j-1][0] - hlines2[j][0]);
-      if (status[j-1]==0 || (status[j]==1 && status[j-1]==0) || (status[j] == 0 && status[j-1]==1)) printf(" [%2.2f] ", dr);
+      if (status[j-1]==STATUS_REMOVE || (status[j]!=STATUS_REMOVE && status[j-1]==STATUS_REMOVE) || (status[j] == STATUS_REMOVE && status[j-1]!=STATUS_REMOVE)) printf(" [%2.2f] ", dr);
     } else {
 //      float dr = fabs(hlines2[0][0] - hlines2[1][0]);
 //      if (status[j]==0) printf("[%2.2f] ", dr);
@@ -922,7 +1003,7 @@ int main(int argc, char *argv[])
 //        for(size_t j=0; j<hlines3.size(); j++) polarLine(dst, hlines3[j]);
 //        for(size_t j=0; j<vlines3.size(); j++) polarLine(dst, vlines3[j]);
 
-        float SomeThresh = 2.0;
+        float SomeThresh = 2.5;
         printf("f_dr_avg: %2.2f, thresh: %2.2f\n",f_dr_avg, SomeThresh);
         makeSomeGrid(hlines2,vlines2, f_dr_avg, dst, SomeThresh);
 
