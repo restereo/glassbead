@@ -1,0 +1,20 @@
+CFLAGS=-v
+
+LINKFLAGS=-L/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include/c++/v1
+
+
+all: go videowrite
+
+camtest: camtest.c
+	g++ -O0 `pkg-config -v --cflags --libs opencv --libs libv4l2` -lrt camtest.c -o camtest
+
+peopleHOG: peopleHOG.c
+	g++ -O2 `pkg-config --cflags --libs opencv --libs libv4l2` -lrt peopleHOG.c -o peopleHOG
+
+go: go.c
+	g++ go.c -o go
+
+videowrite: videowrite.c
+	g++ -O0 `pkg-config --cflags --libs opencv --libs libv4l2` -lrt videowrite.c -o videowrite
+
+
