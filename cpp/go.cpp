@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <unistd.h>
 
 using namespace std;
 using namespace cv;
@@ -184,9 +185,9 @@ int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
       return DIST_TOOCLOSE;
   } else if (fabs(dr-f_dr) < threshold) {
       return DIST_ONE;
-  } else if (fabs(dr - 2*f_dr) < threshold) {
+  } else if (fabs(dr - 2*f_dr) < 1.5*threshold) {
       return DIST_TWO;
-  } else if (fabs(dr - 3*f_dr) < threshold) {
+  } else if (fabs(dr - 3*f_dr) < 2.5*threshold) {
       return DIST_THREE;
   }
   if (dr > 3*f_dr) return DIST_TOO_LONG;
@@ -211,7 +212,7 @@ void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vecto
         printf("ERROR: adding -1-st line\n");
       } else {
         for(int k=j-1;k>=0;k--) {
-          printf("back: j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
+          printf("back: one@ j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
           if (status[k]!=STATUS_REMOVE) {
             Vec2f lp = (hlines2[j]+hlines2[k])/2.0;
             hlines3.push_back(lp);
@@ -221,6 +222,20 @@ void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vecto
         }
         
       }
+    }
+    if (status[j] == STATUS_ADDTWO) {
+        for(int k=j-1;k>=0;k--) {
+          printf("back: two@ j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
+          if (status[k]!=STATUS_REMOVE) {
+            Vec2f lp1 = (hlines2[j]+2.0*hlines2[k])/3.0;
+            Vec2f lp2 = (2.0*hlines2[j]+hlines2[k])/3.0;
+            hlines3.push_back(lp1);
+            hlines3.push_back(lp2);
+            hlines3.push_back(hlines2[j]);
+            break; //inner loop
+          }
+        }
+    
     }
   }
 }
@@ -248,10 +263,11 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
     if ((status[j-1] == 1) && (status[j] == 1)) continue;
     if ((status[j-1] == 1) && (status[j] == 0)) {
       for(size_t k=j;k<hlines2.size(); k++) {
+        if (status[k]>0) break; //dont go past good lines 
         float dr = fabs(hlines2[k][0] - hlines2[j-1][0]);
-          if (dr < f_dr) continue; //skip a line
-          int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
-          printf("fj:%2d k:%2d st[j]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j],status[k], dr);
+        if (dr < f_dr) continue; //skip a line
+        int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
+        printf("fj:%2d k:%2d st[j-1]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j-1],status[k], dr);
           if (q==DIST_TWO) {
             printf("fj: one@%d-%d [%d]\n", j-1, k, status[k]);
             status[k] = STATUS_ADDONE;
@@ -276,6 +292,7 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
     printf("bp: j=%d\n",j);
     if ((status[j] == 1) && (status[j-1] == 0)) {
       for(int k=j-1;k>=0; k--) {
+        if (status[k]>0) break; //dont go past good lines 
         float dr = fabs(hlines2[k][0] - hlines2[j][0]);
           if (dr < f_dr) continue; //skip a line
           int q = checkDist(hlines2[k],hlines2[j], f_dr, threshold);
@@ -350,6 +367,9 @@ void makeSomeGrid(vector<Vec2f> &hlines2, vector<Vec2f> &vlines2, float f_dr, Ma
   vector<Vec2f> hlines3, vlines3;
   filterGridLines(hlines2, f_dr, threshold, hlines3);
   filterGridLines(vlines2, f_dr, threshold, vlines3);
+
+  for(size_t j = 0; j<hlines3.size();j++) polarLine(dst, hlines3[j], Scalar(0,0,255));
+  for(size_t j = 0; j<vlines3.size();j++) polarLine(dst, vlines3[j], Scalar(0,0,255));
    
 
 /*
@@ -388,20 +408,19 @@ void makeSomeGrid(vector<Vec2f> &hlines2, vector<Vec2f> &vlines2, float f_dr, Ma
 
 //  hlines2=hlines3;
 
-        if ((hlines2.size() == 21) && (vlines2.size() == 21)) {
+        if ((hlines3.size() == 19) && (vlines3.size() == 19)) {
 
           printf("render rect\n");
 
-          Point pt1 = intersect(hlines2[1], vlines2[1]);
-          Point pt2 = intersect(hlines2[1], vlines2[vlines2.size()-2]);
-          Point pt3 = intersect(hlines2[hlines2.size()-2], vlines2[1]);
-          Point pt4 = intersect(hlines2[hlines2.size()-2], vlines2[vlines2.size()-2]);
+          Point pt1 = intersect(hlines3[0], vlines3[0]);
+          Point pt2 = intersect(hlines3[0], vlines3[vlines3.size()-1]);
+          Point pt3 = intersect(hlines3[hlines3.size()-1], vlines3[0]);
+          Point pt4 = intersect(hlines3[hlines3.size()-1], vlines3[vlines3.size()-1]);
 
           line(dst, pt1, pt2, Scalar(0,0,255), 3, 8 );
           line(dst, pt2, pt4, Scalar(0,0,255), 3, 8 );
           line(dst, pt3, pt4, Scalar(0,0,255), 3, 8 );
           line(dst, pt3, pt1, Scalar(0,0,255), 3, 8 );
-
         }
 
 }
@@ -1021,14 +1040,14 @@ int main(int argc, char *argv[])
         /* fixme: only supports 180 buckets */
         float maxA = findBestAngle(lines, maxangle); //180/2 degree values
 
-        vector<Vec2f> hlines = findHLines(lines, 5, maxA);
-        vector<Vec2f> vlines = findHLines(lines, 5, maxA+90);
+        vector<Vec2f> hlines = findHLines(lines, 3, maxA);
+        vector<Vec2f> vlines = findHLines(lines, 3, maxA+90);
 
 //        vector<Vec2f> hlines2 = approxHLines(hlines, 0.3);
         printf("lines: h.size=%d v.size=%d\n", hlines.size(), vlines.size());
 
-        vector<Vec2f> hlines2 = filterHLines(hlines, 3);
-        vector<Vec2f> vlines2 = filterHLines(vlines, 3);
+        vector<Vec2f> hlines2 = filterHLines(hlines, 5);
+        vector<Vec2f> vlines2 = filterHLines(vlines, 5);
 
         printf("lines2: h.size=%d v.size=%d\n", hlines2.size(), vlines2.size());
 
@@ -1223,15 +1242,14 @@ int main(int argc, char *argv[])
 
         char k = (char)cv::waitKey(1);
         if( k == 27 ) break;
-/*        if( k == ' ' )
+        if( k == ' ' )
         {
-            update_bg_model = !update_bg_model;
-            if(update_bg_model)
-                printf("Background update is on\n");
-            else
-                printf("Background update is off\n");
+          fflush(stdout);
+          while(true) {
+            k = (char)cv::waitKey(100);
+            if (k == ' ') break;            
+          }
         }
-*/
         timer_log("time_total", true);
     }
     return 0;
