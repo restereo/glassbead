@@ -142,7 +142,7 @@ void polarLine(Mat dst, Vec2f lp) {
   polarLine(dst,lp,Scalar(0,255,0));
 }
 
-Point intersect(Vec2f a, Vec2f b) {
+Point intersect(Vec2f &a, Vec2f &b) {
 
   // printf("line h: %1.f %1.f\n", a[0], a[1]);
 
@@ -199,13 +199,35 @@ int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
 #define STATUS_ADDTWO 3
 #define STATUS_ADDTHREE 3
 
-void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat dst, float threshold) {
+void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vector<Vec2f> &hlines3) {
+  //process lines
+  for(int j=0;j<hlines2.size();j++) {
+    if (status[j] == STATUS_REMOVE) continue;
+    if (status[j] == STATUS_OK) {
+      hlines3.push_back(hlines2[j]);
+    }
+    if (status[j] == STATUS_ADDONE) {
+      if (j==0) {
+        printf("ERROR: adding -1-st line\n");
+      } else {
+        for(int k=j-1;k>=0;k--) {
+          printf("back: j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
+          if (status[k]!=STATUS_REMOVE) {
+            Vec2f lp = (hlines2[j]+hlines2[k])/2.0;
+            hlines3.push_back(lp);
+            hlines3.push_back(hlines2[j]);
+            break; //inner loop
+          }
+        }
+        
+      }
+    }
+  }
+}
 
-  vector<Vec2f> hlines3;
+void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector<Vec2f> &hlines3) {
+
   AutoBuffer<int> status(hlines2.size());
-
-  //remove some lines;
-  float prev_pushed_line = -1;
 
   status[0] = STATUS_REMOVE;
 
@@ -222,6 +244,7 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
   }
   //forward patching
   for(size_t j=1;j<hlines2.size();j++) {
+    printf("fp: j=%d\n",j);
     if ((status[j-1] == 1) && (status[j] == 1)) continue;
     if ((status[j-1] == 1) && (status[j] == 0)) {
       for(size_t k=j;k<hlines2.size(); k++) {
@@ -230,13 +253,13 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
           int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
           printf("fj:%2d k:%2d st[j]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j],status[k], dr);
           if (q==DIST_TWO) {
-            printf("fj: one@%d [%d]\n", k, status[k]);
+            printf("fj: one@%d-%d [%d]\n", j-1, k, status[k]);
             status[k] = STATUS_ADDONE;
             j=k;
             break;
           }
           if (q==DIST_THREE) {
-            printf("fj: two@%d [%d]\n", k, status[k]);
+            printf("fj: two@%d-%d [%d]\n", j-1, k, status[k]);
             status[k] = STATUS_ADDTWO;
             j=k;
             break;
@@ -249,21 +272,26 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
   }
   
     //backward patching
-  for(size_t j=1;j<hlines2.size();j++) {
-    if ((status[j-1] == 0) && (status[j] == 1)) {
-      for(size_t k=j-1;k>0; k--) {
+  for(int j=hlines2.size();j>1;j--) {
+    printf("bp: j=%d\n",j);
+    if ((status[j] == 1) && (status[j-1] == 0)) {
+      for(int k=j-1;k>=0; k--) {
         float dr = fabs(hlines2[k][0] - hlines2[j][0]);
           if (dr < f_dr) continue; //skip a line
-          int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
+          int q = checkDist(hlines2[k],hlines2[j], f_dr, threshold);
           printf("bj:%2d k:%2d st[j]: %d st[k]:%d dr(j-k):%2.2f\n",j,k,status[j],status[k], dr);
           if (q==DIST_TWO) {
-            printf("bj: one@%d [%d]\n", j, status[j]);
+            printf("bj: one@%d-%d [%d]\n", k, j, status[j]);
             status[j] = STATUS_ADDONE;
+            if (status[k]==STATUS_REMOVE) status[k]=STATUS_OK;
+            if (k>1) j=k;
             break;
           }
           if (q==DIST_THREE) {
-            printf("bj: two@%d [%d]\n", j, status[j]);
+            printf("bj: two@%d-%d [%d]\n", k, j, status[j]);
             status[j] = STATUS_ADDTWO;
+            if (status[k]==STATUS_REMOVE) status[k]=STATUS_OK;
+            if (k>1) j=k;
             break;
           }
           if (q==DIST_TOO_LONG) {
@@ -274,24 +302,55 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
 
   }
   
-  for(size_t j=0;j<hlines2.size();j++) {
-    if (status[j] == STATUS_REMOVE) continue;
-    if (status[j] == STATUS_OK) {
-      hlines3.push_back(hlines2[j]);
-    }
-    if (status[j] == STATUS_ADDONE && (j>0)) {
-      for(size_t k=j-1;k>0;k--) {
-        printf("back: j:%2d k:%2d st[j]:%d st[k]:%d\n",j,k,status[j],status[k]);
-        if (status[k]!=STATUS_REMOVE) {
-          Vec2f lp = (hlines2[j]+hlines2[k])/2.0;
-          hlines3.push_back(lp);
-          hlines3.push_back(hlines2[j]);
-          break; //inner loop
-        }
+  processLinesStatuses(hlines2, status, hlines3);
+
+
+  //hmm... magick dirty fixes
+  
+  if (hlines3.size() > 19) {
+    //remove some lines;
+    int dirty_start = 0;
+    for(int i=1;i<min(4,(int)hlines2.size()); i++) {
+      if (status[i] >= STATUS_ADDONE) {
+          dirty_start = i;
+          break;
       }
     }
+    
+    printf("dirty_start: %d\n", dirty_start);
+    
+    if (dirty_start) {
+                    
+    }
+    
+    
   }
-  
+
+  //debug code
+  int good_c = hlines3.size();
+
+  printf("1d[%d/%d]: ",good_c,hlines2.size());
+  for(size_t j=0;j<hlines2.size();j++) {
+    if (j>0) {
+      float dr = fabs(hlines2[j-1][0] - hlines2[j][0]);
+      if (status[j-1]==STATUS_REMOVE || (status[j]!=STATUS_REMOVE && status[j-1]==STATUS_REMOVE) || (status[j] == STATUS_REMOVE && status[j-1]!=STATUS_REMOVE)) printf(" [%2.2f] ", dr);
+    } else {
+//      float dr = fabs(hlines2[0][0] - hlines2[1][0]);
+//      if (status[j]==0) printf("[%2.2f] ", dr);
+    }
+    printf("%d",status[j]);
+  }
+  printf("\n");
+
+}
+
+
+void makeSomeGrid(vector<Vec2f> &hlines2, vector<Vec2f> &vlines2, float f_dr, Mat dst, float threshold) {
+
+  vector<Vec2f> hlines3, vlines3;
+  filterGridLines(hlines2, f_dr, threshold, hlines3);
+  filterGridLines(vlines2, f_dr, threshold, vlines3);
+   
 
 /*
         if (dr < f_dr-2*threshold) {
@@ -323,20 +382,6 @@ void makeSomeGrid(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float f_dr, Mat 
       prev_r = hlines2[j][0];
   */
 
-  int good_c = hlines3.size();
-
-  printf("1d[%d/%d]: ",good_c,hlines2.size());
-  for(size_t j=0;j<hlines2.size();j++) {
-    if (j>0) {
-      float dr = fabs(hlines2[j-1][0] - hlines2[j][0]);
-      if (status[j-1]==STATUS_REMOVE || (status[j]!=STATUS_REMOVE && status[j-1]==STATUS_REMOVE) || (status[j] == STATUS_REMOVE && status[j-1]!=STATUS_REMOVE)) printf(" [%2.2f] ", dr);
-    } else {
-//      float dr = fabs(hlines2[0][0] - hlines2[1][0]);
-//      if (status[j]==0) printf("[%2.2f] ", dr);
-    }
-    printf("%d",status[j]);
-  }
-  printf("\n");
 
 
 //  printf("somelines: h: %d -> %d\n", hlines2.size(), hlines3.size());
@@ -700,7 +745,7 @@ char getPixelAtPoint(Mat img, Point p, int delta) {
 /*!
  * На вход нужны картинка и решетка
  */
-vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>* vlines) {
+vector <vector <char> > getBoard (Mat img, vector<Vec2f> &hlines, vector<Vec2f> &vlines) {
 
   // assert(hlines.size(), 21);
   // assert(vlines.size(), 21);
@@ -711,15 +756,15 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>*
   board.resize(20, vector<char>(19, '*'));
   Point p;
 
-  for (int i = 1; i < hlines->size() - 1; i++) {
+  for (int i = 1; i < hlines.size() - 1; i++) {
 
-    for (int j = 1; j < vlines->size() - 1; j++) {
+    for (int j = 1; j < vlines.size() - 1; j++) {
 
       // printf("hline: %2.f %2.f\n", hlines[i][0], hlines[i][1]);
       // printf("vline: %2.f %2.f\n", vlines[j][0], vlines[j][1]);
       // printf("got lines\n");
 
-      p = intersect((*hlines)[i], (*vlines)[j]);
+      p = intersect(hlines[i], vlines[j]);
 
       // printf("point: %d %d \n", p.x, p.y);
 
@@ -1024,7 +1069,7 @@ int main(int argc, char *argv[])
 
           // char board[19][19];
 
-          vector <vector <char> > board = getBoard(src_gray, &hlines2, &vlines2);
+          vector <vector <char> > board = getBoard(src_gray, hlines2, vlines2);
 
 
           printf("\n");
