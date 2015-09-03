@@ -17,6 +17,8 @@
 using namespace std;
 using namespace cv;
 
+using cv::CLAHE;
+
 struct timeval timer_st;
 
 void timer_start() {
@@ -133,8 +135,8 @@ void polarLine(Mat dst, Vec2f lp, Scalar cl) {
           double b = sin(lp[1]);
 
           double x0 = a*lp[0], y0 = b*lp[0];
-          Point pt1(cvRound(x0 + 1000*(-b)), cvRound(y0 + 1000*(a)));
-          Point pt2(cvRound(x0 - 1000*(-b)), cvRound(y0 - 1000*(a)));
+          Point pt1(cvRound(x0 + 2000*(-b)), cvRound(y0 + 2000*(a)));
+          Point pt2(cvRound(x0 - 2000*(-b)), cvRound(y0 - 2000*(a)));
 
           line(dst, pt1, pt2, cl, 1, 8 );
 
@@ -198,7 +200,6 @@ int checkDist(Vec2f a, Vec2f b, float f_dr, float threshold) {
 #define STATUS_OK 1
 #define STATUS_ADDONE 2
 #define STATUS_ADDTWO 3
-#define STATUS_ADDTHREE 3
 
 void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vector<Vec2f> &hlines3) {
   //process lines
@@ -220,7 +221,7 @@ void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vecto
             break; //inner loop
           }
         }
-        
+
       }
     }
     if (status[j] == STATUS_ADDTWO) {
@@ -235,7 +236,7 @@ void processLinesStatuses(vector<Vec2f> &hlines2, AutoBuffer<int> &status, vecto
             break; //inner loop
           }
         }
-    
+
     }
   }
 }
@@ -263,7 +264,7 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
     if ((status[j-1] == 1) && (status[j] == 1)) continue;
     if ((status[j-1] == 1) && (status[j] == 0)) {
       for(size_t k=j;k<hlines2.size(); k++) {
-        if (status[k]>0) break; //dont go past good lines 
+        if (status[k]>0) break; //dont go past good lines
         float dr = fabs(hlines2[k][0] - hlines2[j-1][0]);
         if (dr < f_dr) continue; //skip a line
         int q = checkDist(hlines2[k],hlines2[j-1], f_dr, threshold);
@@ -286,13 +287,13 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
       }
     }
   }
-  
+
     //backward patching
   for(int j=hlines2.size();j>1;j--) {
     printf("bp: j=%d\n",j);
     if ((status[j] == 1) && (status[j-1] == 0)) {
       for(int k=j-1;k>=0; k--) {
-        if (status[k]>0) break; //dont go past good lines 
+        if (status[k]>0) break; //dont go past good lines
         float dr = fabs(hlines2[k][0] - hlines2[j][0]);
           if (dr < f_dr) continue; //skip a line
           int q = checkDist(hlines2[k],hlines2[j], f_dr, threshold);
@@ -318,33 +319,30 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
     }
 
   }
-  
+
+  int good_c = 0;
+  for(size_t j=0;j<hlines2.size();j++) {
+    good_c+=status[j];
+  }
+
+  if(good_c == 20) {
+    if (status[0]==STATUS_REMOVE) {
+      status[hlines2.size()-1] = STATUS_REMOVE;
+    } else if (status[hlines2.size()-1] == STATUS_REMOVE) {
+      status[0]=STATUS_REMOVE;
+    }
+  } else if (good_c == 21) {
+
+    status[0] = STATUS_REMOVE;
+    status[hlines2.size()-1] = STATUS_REMOVE;
+  }
+
   processLinesStatuses(hlines2, status, hlines3);
 
 
-  //hmm... magick dirty fixes
-  
-  if (hlines3.size() > 19) {
-    //remove some lines;
-    int dirty_start = 0;
-    for(int i=1;i<min(4,(int)hlines2.size()); i++) {
-      if (status[i] >= STATUS_ADDONE) {
-          dirty_start = i;
-          break;
-      }
-    }
-    
-    printf("dirty_start: %d\n", dirty_start);
-    
-    if (dirty_start) {
-                    
-    }
-    
-    
-  }
 
   //debug code
-  int good_c = hlines3.size();
+  good_c = hlines3.size();
 
   printf("1d[%d/%d]: ",good_c,hlines2.size());
   for(size_t j=0;j<hlines2.size();j++) {
@@ -363,15 +361,14 @@ void filterGridLines(vector<Vec2f> &hlines2, float f_dr, float threshold, vector
 }
 
 
-void makeSomeGrid(vector<Vec2f> &hlines2, vector<Vec2f> &vlines2, float f_dr, Mat dst, float threshold) {
+void makeSomeGrid(vector<Vec2f> &hlines2, vector<Vec2f> &vlines2, float f_dr, Mat dst, float threshold, vector<Vec2f>& hlines3, vector<Vec2f>& vlines3) {
 
-  vector<Vec2f> hlines3, vlines3;
   filterGridLines(hlines2, f_dr, threshold, hlines3);
   filterGridLines(vlines2, f_dr, threshold, vlines3);
 
   for(size_t j = 0; j<hlines3.size();j++) polarLine(dst, hlines3[j], Scalar(0,0,255));
   for(size_t j = 0; j<vlines3.size();j++) polarLine(dst, vlines3[j], Scalar(0,0,255));
-   
+
 
 /*
         if (dr < f_dr-2*threshold) {
@@ -459,15 +456,17 @@ float findBestAngle(vector<Vec4i> lines, int numangle) {
               maxA = a;
             }
         }
-        printf("maxA: %d / %d\n", maxA, numangle);
 
+        float _ang = 180.0 * (float)maxA / (float)numangle;
 
-        return (180.0 * (float)maxA / (float)numangle);
+        printf("maxA: %d / %d -> %2.2f\n", maxA, numangle, _ang);
+
+        return _ang;
 }
 
 float findBestStep(vector<Vec2f> hlines2, vector<Vec2f> vlines2, float threshold) {
 
-        int maxdr = 30;
+        int maxdr = 50;
         AutoBuffer<int> _dritems(maxdr);
         memset(_dritems, 0, sizeof(int)*(maxdr));
 
@@ -719,46 +718,69 @@ void dumpLines(vector<Vec4i*> lines) {
 }
 
 
+void increaseContrast (Mat* src, Mat* dst) {
 
-char getPixelAtPoint(Mat img, Point p, int delta) {
+  // /*
+  Ptr<CLAHE> clahe = createCLAHE();
+  clahe->setClipLimit(1);
 
+  clahe->apply(*src,*dst);
+  //
+  // threshold(*src, *dst, 50, 255, 0);
+
+
+}
+
+
+char getPixelAtPoint(Mat eq_img, Point p, int delta) {
+
+
+  char res = '*';
 
   // printf("getPixelAtPoint: %d %d", p.x, p.y);
 
-  Scalar intensity = img.at<uchar>(p);
+  Scalar intensity = eq_img.at<uchar>(p);
 
   int _i = intensity.val[0]; // from 0 to 255
 
   int i_point = _i;
 
+  vector <int> int_hist;
+
   for (int i = -delta; i < delta; i++)
   {
     for (int j = -delta; j < delta; j++)
     {
-      Scalar __i = img.at<uchar>(p);
+      Scalar __i = eq_img.at<uchar>(p.y + i, p.x + j);
+
+      int_hist.push_back(__i.val[0]);
 
       // int i = intensity.val[0];
       _i = floor((_i + __i.val[0])/2);
     }
   }
 
-  printf("intensity: %d (%d) ", _i, i_point);
+  sort(int_hist.begin(), int_hist.end());
 
-  // Vec3f intensity = img.at<Vec3f>(y, x);
-  // float blue = intensity.val[0];
-  // float green = intensity.val[1];
-  // float red = intensity.val[2];
-  // float sum = blue + green + red;
 
-  if (_i > 190 ) {
-    return 'W';
+  int disp = abs(int_hist[0] - int_hist[int_hist.size()-1]);
+
+  if (disp < 100) { // более-менее кучное распределение
+
+
+    if (_i > 180 ) {
+      res = 'W';
+    }
+
+    if (_i < 90 ) {
+      res = 'B';
+    }
+
   }
 
-  if (_i < 50 ) {
-    return 'B';
-  }
+  // printf("getPixelAtPoint: %c %d %d\n", res, int_hist[0], int_hist[int_hist.size()-1]);
 
-  return '*';
+  return res;
 
 }
 
@@ -776,9 +798,9 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f> &hlines, vector<Vec2f> 
   board.resize(20, vector<char>(19, '*'));
   Point p;
 
-  for (int i = 1; i < hlines.size() - 1; i++) {
+  for (int i = 0; i < hlines.size() ; i++) {
 
-    for (int j = 1; j < vlines.size() - 1; j++) {
+    for (int j = 0; j < vlines.size() ; j++) {
 
       // printf("hline: %2.f %2.f\n", hlines[i][0], hlines[i][1]);
       // printf("vline: %2.f %2.f\n", vlines[j][0], vlines[j][1]);
@@ -789,9 +811,9 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f> &hlines, vector<Vec2f> 
       // printf("point: %d %d \n", p.x, p.y);
 
 
-      char c = getPixelAtPoint(img, p, 3);
+      char c = getPixelAtPoint(img, p, 4);
 
-      printf("%c\n", c);
+      // printf("%c\n", c);
 
       board[i][j] = c;
 
@@ -815,7 +837,7 @@ FILE * initSocket(int argc, char *argv[]) {
   if (argc!=2) {
     printf("Warn: usage %s <hostname_of_server>\nUsing default of: %s\n", argv[0], _addr);
   } else if (argc==2) {
-    addr_str=argv[1];    
+    addr_str=argv[1];
   }
 
   printf("Connect: %s\n", addr_str);
@@ -850,7 +872,7 @@ FILE * initSocket(int argc, char *argv[]) {
 
   if (e < 0) {
     printf("\n\nError connecting to %s: %d\n\n", addr_str, e);
-    exit(1);
+    // exit(1);
   }
 
   FILE *fd = fdopen(sock_fd, "w");
@@ -889,12 +911,15 @@ int main(int argc, char *argv[])
     cv::Mat output;
 
     cv::Mat frame_tm;
+    cv::Mat eq_img;
 
     _sock = initSocket(argc, argv);
 
-    cv::VideoCapture cap(1);
-    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
-    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 960);
+    cv::VideoCapture cap(0);
+//    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
+    // cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
+//    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
+    // cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
 
 
   //  cv::VideoCapture cap("./video/video_640x480.avi");
@@ -917,9 +942,9 @@ int main(int argc, char *argv[])
     cv::namedWindow("Cam", CV_WINDOW_NORMAL);
 */
     cv::moveWindow("Frame", 0,0);
-    cv::resizeWindow("Frame", frame_width, frame_height);
+    cv::resizeWindow("Frame", 640, 480);
     cv::moveWindow("Canny", 640,0);
-    cv::resizeWindow("Canny", frame_width, frame_height);
+    cv::resizeWindow("Canny", 640, 480);
 /*
     cv::moveWindow("Fore", 1024, 260);
     cv::moveWindow("Clouds", 1024, 0);
@@ -978,7 +1003,7 @@ int main(int argc, char *argv[])
         if (dst.empty()) {
           dst.create( frame.size(), frame.type() );
         }
-        frame_tm.copyTo(dst);
+        frame.copyTo(dst);
 
         cvtColor( frame_tm, src_gray, CV_BGR2GRAY );
 
@@ -1006,16 +1031,22 @@ int main(int argc, char *argv[])
         addWeighted( abs_grad_x, 0.5, abs_grad_y, 0.5, 0, edges);
 
         //for opencv/hough threshold is required
-        cv::threshold(edges, edges, 20, 255, 0);
+        cv::threshold(edges, edges, 35, 255, 0);
 
+        int erosion_size = 1;
+        Mat element =getStructuringElement(MORPH_ELLIPSE,
+          Size(2*erosion_size+1,2*erosion_size+1),
+          Point(erosion_size,erosion_size));
+
+        cv::dilate(edges, edges, element);
 
 
 //2: hough
 
         int maxangle = 360; //360 => 0.5 degree angle step
-        double rho=2.0;
+        double rho=1.0;
         double theta = CV_PI/(float)maxangle;
-        int threshold = 150;
+        int threshold = 120;
 
 /* //My own greyscale-enabled Hough
 
@@ -1029,7 +1060,7 @@ int main(int argc, char *argv[])
 */
 
         vector<Vec4i> lines;  /* minLineLength, maxLineMissingPart */
-        HoughLinesP(edges, lines, rho, theta, threshold, 170, 30);
+        HoughLinesP(edges, lines, rho, theta, threshold, 270, 40);
         printf("hough.lines: %d\n", lines.size());
 
 /*
@@ -1047,7 +1078,7 @@ int main(int argc, char *argv[])
 //        vector<Vec2f> hlines2 = approxHLines(hlines, 0.3);
         printf("lines: h.size=%d v.size=%d\n", hlines.size(), vlines.size());
 
-        float merge_dist = 4.0;
+        float merge_dist = 8.0;
         vector<Vec2f> hlines2 = filterHLines(hlines, merge_dist);
         vector<Vec2f> vlines2 = filterHLines(vlines, merge_dist);
 
@@ -1079,18 +1110,27 @@ int main(int argc, char *argv[])
 //        for(size_t j=0; j<hlines3.size(); j++) polarLine(dst, hlines3[j]);
 //        for(size_t j=0; j<vlines3.size(); j++) polarLine(dst, vlines3[j]);
 
-        float SomeThresh = 2.5;
+        vector <Vec2f> hlines3, vlines3;
+
+
+        float SomeThresh = 2.5*2.5;
         printf("f_dr_avg: %2.2f, thresh: %2.2f\n",f_dr_avg, SomeThresh);
-        makeSomeGrid(hlines2,vlines2, f_dr_avg, dst, SomeThresh);
+
+        makeSomeGrid(hlines2,vlines2, f_dr_avg, dst, SomeThresh, hlines3, vlines3);
 
 
 
-        if ((hlines2.size() == 21) && (vlines2.size() == 21)) {
+        increaseContrast(&src_gray, &eq_img);
+        // equalizeHist(src_gray, eq_img);
+        // eq_img = src_gray;
 
-          // char board[19][19];
+        if ((hlines3.size() == 19) && (vlines3.size() == 19)) {
 
-          vector <vector <char> > board = getBoard(src_gray, hlines2, vlines2);
+        // char board[19][19];
 
+
+
+          vector <vector <char> > board = getBoard(eq_img, hlines3, vlines3);
 
           printf("\n");
           for (int i = 0; i < 19; i++)
@@ -1102,7 +1142,7 @@ int main(int argc, char *argv[])
             printf("\n");
           }
 
-          sendToSocket(_sock, board);
+          // sendToSocket(_sock, board);
 
         }
 
@@ -1224,9 +1264,9 @@ int main(int argc, char *argv[])
 */
 
         cv::imshow("Frame",dst);
-        cv::imshow("Canny",edges);
+//        cv::imshow("Canny",edges);
+        cv::imshow("eq_img",eq_img);
 /*
-        cv::imshow("Fore",fore_alpha);
         cv::imshow("Cam",frame);
 */
         timer_log("time_imshow");
@@ -1249,7 +1289,7 @@ int main(int argc, char *argv[])
           fflush(stdout);
           while(true) {
             k = (char)cv::waitKey(100);
-            if (k == ' ') break;            
+            if (k == ' ') break;
           }
         }
         timer_log("time_total", true);
