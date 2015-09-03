@@ -741,9 +741,19 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f>* hlines, vector<Vec2f>*
 
 FILE * _sock;
 
-char* _addr = "192.168.12.11";
+char _addr[] = "192.168.12.11\0";
 
-FILE * initSocket() {
+FILE * initSocket(int argc, char *argv[]) {
+
+  char *addr_str = &(_addr[0]);
+
+  if (argc!=2) {
+    printf("Warn: usage %s <hostname_of_server>\nUsing default of: %s\n", argv[0], _addr);
+  } else if (argc==2) {
+    addr_str=argv[1];    
+  }
+
+  printf("Connect: %s\n", addr_str);
 
   struct sockaddr_in addr;
   struct hostent *server;
@@ -756,13 +766,14 @@ FILE * initSocket() {
   int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
 
   if (sock_fd<0) {
-    printf("ERROR open socket");
+    printf("ERROR opening socket\n");
+    exit(1);
   }
 
-  server = gethostbyname(_addr);
+  server = gethostbyname(addr_str);
 
   if (server == NULL) {
-    printf("no such host");
+    printf("GetHostByName: no such host %s\n",addr_str);
     exit(1);
   }
 
@@ -773,7 +784,7 @@ FILE * initSocket() {
   int e = connect(sock_fd, (struct sockaddr*) &addr, sizeof(addr));
 
   if (e < 0) {
-    printf("\n\nerorr connecting: %d\n\n", e);
+    printf("\n\nError connecting to %s: %d\n\n", addr_str, e);
     exit(1);
   }
 
@@ -785,7 +796,7 @@ FILE * initSocket() {
   return fd;
 }
 
-char* _empty_line = "\n\n";
+char _empty_line[] = "\n\n";
 
 void sendToSocket(FILE* fd,vector<vector<char> >& buf) {
 
@@ -815,7 +826,7 @@ int main(int argc, char *argv[])
 
     cv::Mat frame_tm;
 
-    _sock = initSocket();
+    _sock = initSocket(argc, argv);
 
 //    cv::VideoCapture cap(1);
 //    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
