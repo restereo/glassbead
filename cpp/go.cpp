@@ -892,12 +892,12 @@ int main(int argc, char *argv[])
 
     _sock = initSocket(argc, argv);
 
-//    cv::VideoCapture cap(1);
-//    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
-//    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
+    cv::VideoCapture cap(1);
+    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
+    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 960);
 
 
-    cv::VideoCapture cap("./video/video_640x480.avi");
+  //  cv::VideoCapture cap("./video/video_640x480.avi");
 //    cv::BackgroundSubtractorMOG2 bg(500, 0.89, false);
     cv::BackgroundSubtractorMOG bg(500, 3, 0.7, 0.02);
 
