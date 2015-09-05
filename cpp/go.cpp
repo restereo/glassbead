@@ -36,82 +36,6 @@ void timer_log(const char *msg, bool show_fps=false) {
   }
 }
 
-void HoughImg( const Mat& img, float rho, float theta, Mat& dst ) {
-  int i, j;
-  float irho = 1/rho;
-
-  CV_Assert( img.type() == CV_8UC1 );
-
-  const uchar* image = img.ptr();
-  int step = (int)img.step;
-  int width = img.cols;
-  int height = img.rows;
-
-
-  int numangle = cvRound( CV_PI / 2 / theta );
-  int numrho = cvRound(((width+height) * 2 + 1) / rho);
-
-  printf("numangle: %d, numrho: %d\n", numangle, numrho);
-
-//  AutoBuffer<float> _accum((numangle+2) * (numrho+2));
-
-  if (dst.empty()) {
-    dst.create((numangle+2),(numrho+2), CV_32F);
-  }
-
-  dst = Scalar::all(0.0);
-
-  float* accum = (float *)dst.ptr();
-  int astep = dst.step;
-
-  AutoBuffer<float> _tabSin(numangle);
-  AutoBuffer<float> _tabCos(numangle);
-
-  float *tabSin = _tabSin, *tabCos = _tabCos;
-
-//  memset( accum, 0, sizeof(accum[0]) * (numangle + 2 ) * (numrho + 2) );
-  float ang = 0; //min_theta;
-  for(int n=0; n<numangle; ang+=theta, n++) {
-    tabSin[n] = (float)(sin((double)ang)) * irho;
-    tabCos[n] = (float)(cos((double)ang)) * irho;
-  }
-  printf("fill..\n");
-  //fill accum
-  for(i=0;i<height;i++)
-    for(j=0;j<width;j++) {
-      for (int n=0; n<numangle; n++) {
-        int r = cvRound( j * tabCos[n] + i * tabSin[n] );
-        r+= (numrho - 1) / 2;
-        dst.at<float>(Point((r+1),(n+1))) += (float)(image[i*step+j])/(float)(255.0*1800*1.2);
-
-        r = cvRound( - j * tabSin[n] + i * tabCos[n] );
-        r = (numrho - 1) / 2 - r ;
-        dst.at<float>(Point((r+1),(n+1))) += (float)(image[i*step+j])/(float)(255.0*1800*1.2);
-      }
-    }
-
-  //find extremum
-  float maxd = 0.00;
-  int maxr=0, maxn = 0;
-
-  float maxrhoex =0;
-  int maxnex = 0;
-
-  for(int n =0; n<numangle; n++) {
-    int rhoex = 0;
-    for(int r = 0; r<numrho; r++) {
-      float d = dst.at<float>(Point(r+1,n+1));
-      if ( (d>dst.at<float>(Point(r+2,n+1))) && (d>dst.at<float>(Point(r,n+1))) ) {
-        rhoex++;
-      }
-    }
-    if (rhoex > maxrhoex) {
-      maxrhoex = rhoex;
-      maxnex = n;
-    }
-  }
-  printf("maxd=%0.3f, maxr=%d, maxn=%d | maxnex=%0.1f maxrhoex=%0.4f\n", maxd, maxr, maxn, (float)maxnex*90.0/(float)numangle, maxrhoex);
-}
 
 Vec2f toPolar(Vec4i l) {
     float ang = -atan2((float)(l[2]-l[0]), (float)(l[3]-l[1]));
@@ -718,21 +642,21 @@ void dumpLines(vector<Vec4i*> lines) {
 }
 
 
-void increaseContrast (Mat* src, Mat* dst) {
+void increaseContrast (Mat &src, Mat &dst) {
 
   // /*
   Ptr<CLAHE> clahe = createCLAHE();
   clahe->setClipLimit(1);
 
-  clahe->apply(*src,*dst);
+  clahe->apply(src, dst);
   //
   // threshold(*src, *dst, 50, 255, 0);
-
-
 }
 
+inline int _min(int a, int b) { return ((a>b)?b:a); }
+inline int _max(int a, int b) { return ((a>b)?a:b); }
 
-char getPixelAtPoint(Mat eq_img, Point p, int delta) {
+char getPixelAtPoint(Mat &eq_img, Point &p, int delta) {
 
 
   char res = '*';
@@ -745,28 +669,66 @@ char getPixelAtPoint(Mat eq_img, Point p, int delta) {
 
   int i_point = _i;
 
+  //histo params
+  int divider = 4;
+  int hst_len = 256/divider;
+
+  AutoBuffer<int> _hst(hst_len);
+  int *hst = _hst;
   vector <int> int_hist;
 
-  for (int i = -delta; i < delta; i++)
+  memset(hst, 0, hst_len * sizeof(int));
+
+  //printf("@rect: [%d %d] [%d %d]\n", _max(0,p.y-delta),_min(eq_img.rows, p.y+delta),_max(0,p.x-delta),_min(eq_img.cols, p.x+delta));
+
+  for (int i = max(0,p.y-delta); i < min(eq_img.rows, p.y+delta); i++)
   {
-    for (int j = -delta; j < delta; j++)
+    for (int j = max(0,p.x-delta); j < min(eq_img.cols, p.x+delta); j++)
     {
-      Scalar __i = eq_img.at<uchar>(p.y + i, p.x + j);
+      uint8_t __i = eq_img.at<uchar>(i, j); //y x
 
-      int_hist.push_back(__i.val[0]);
-
+      int_hist.push_back(__i);
+      hst[(__i/divider)]++;
       // int i = intensity.val[0];
-      _i = floor((_i + __i.val[0])/2);
+      _i = floor((_i + __i)/2.0);
     }
   }
 
   sort(int_hist.begin(), int_hist.end());
 
 
+
+  AutoBuffer<int> _hstb(hst_len);
+  int *hstb = _hstb;
+  memset(hstb,0,hst_len);
+  for(int i=0;i<hst_len-1;i++) {
+    hstb[i]=hst[i]+hst[i+1];
+  }
+
+
+  //process histo
+  int maxHst_val =0;
+  int maxHst_pos = 0;
+  for(size_t l=0;l<hst_len;l++) {
+    if (hstb[l]>maxHst_val) {
+      maxHst_val = hstb[l];
+      maxHst_pos = l;
+    }
+  }
+
+  char resB = '*';
+
+  if (maxHst_val > 60) { //65 misses some bricks
+    if (maxHst_pos > 180/divider) {
+      resB = 'W';
+    } else if (maxHst_pos < 90/divider) {
+      resB = 'B';
+    }
+  }
+
   int disp = abs(int_hist[0] - int_hist[int_hist.size()-1]);
 
   if (disp < 100) { // более-менее кучное распределение
-
 
     if (_i > 180 ) {
       res = 'W';
@@ -778,9 +740,27 @@ char getPixelAtPoint(Mat eq_img, Point p, int delta) {
 
   }
 
-  // printf("getPixelAtPoint: %c %d %d\n", res, int_hist[0], int_hist[int_hist.size()-1]);
+  //move all debug to the end/conditional
+  if (1 || res!='*' || resB!='*' ) {
+    
+    printf("Histo @(%d,%d):\n",p.x,p.y);
+    for(size_t l=0;l<hst_len;l++) {
+      printf("%2d ",hst[l]);
+      if (l%32==31) printf("\n");    
+    }
 
-  return res;
+    printf("HistoB @(%d,%d):\n",p.x,p.y);
+    for(size_t l=0;l<hst_len;l++) {
+      printf("%2d ",hstb[l]);
+      if (l%32==31) printf("\n");    
+    }
+
+    printf("maxHst: val=%d pos=%d max brighness => %d\n", maxHst_val, maxHst_pos, maxHst_pos*divider);
+
+    printf("getPixelAtPoint: %c/%c min:%d max:%d val:%d disp:%d\n", res, resB, int_hist[0], int_hist[int_hist.size()-1],_i,disp);
+  }
+  
+  return resB;
 
 }
 
@@ -811,7 +791,7 @@ vector <vector <char> > getBoard (Mat img, vector<Vec2f> &hlines, vector<Vec2f> 
       // printf("point: %d %d \n", p.x, p.y);
 
 
-      char c = getPixelAtPoint(img, p, 4);
+      char c = getPixelAtPoint(img, p, 8);
 
       // printf("%c\n", c);
 
@@ -922,9 +902,9 @@ int main(int argc, char *argv[])
     // cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
 
 
-  //  cv::VideoCapture cap("./video/video_640x480.avi");
+//    cv::VideoCapture cap("./video_goban_1280x960_1.avi");
 //    cv::BackgroundSubtractorMOG2 bg(500, 0.89, false);
-    cv::BackgroundSubtractorMOG bg(500, 3, 0.7, 0.02);
+//    cv::BackgroundSubtractorMOG bg(500, 3, 0.7, 0.02);
 
     int frame_width=    cap.get(CV_CAP_PROP_FRAME_WIDTH);
     int frame_height=   cap.get(CV_CAP_PROP_FRAME_HEIGHT);
@@ -936,7 +916,8 @@ int main(int argc, char *argv[])
     std::vector<std::vector<cv::Point> > contours;
 
     cv::namedWindow("Frame");
-    cv::namedWindow("Canny", CV_WINDOW_NORMAL);
+    cv::namedWindow("eq_img");
+//    cv::namedWindow("Canny", CV_WINDOW_NORMAL);
 /*
     cv::namedWindow("Clouds", CV_WINDOW_NORMAL);
     cv::namedWindow("Cam", CV_WINDOW_NORMAL);
@@ -1040,7 +1021,7 @@ int main(int argc, char *argv[])
 
         cv::dilate(edges, edges, element);
 
-
+        timer_log("time_prepare_image");
 //2: hough
 
         int maxangle = 360; //360 => 0.5 degree angle step
@@ -1048,12 +1029,8 @@ int main(int argc, char *argv[])
         double theta = CV_PI/(float)maxangle;
         int threshold = 120;
 
-/* //My own greyscale-enabled Hough
 
-        printf("call houghimg\n");
-        HoughImg(edges, rho, theta, dst);
-
-// Standart Hough
+/* Standart Hough
 
         vector<Vec2f> lines;
         HoughLines(edges, lines, rho, theta, threshold);
@@ -1069,6 +1046,8 @@ int main(int argc, char *argv[])
           line(dst, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255,0,0), 1, 8);
         }
 */
+        timer_log("time_PHough");
+        
         /* fixme: only supports 180 buckets */
         float maxA = findBestAngle(lines, maxangle); //180/2 degree values
 
@@ -1118,9 +1097,9 @@ int main(int argc, char *argv[])
 
         makeSomeGrid(hlines2,vlines2, f_dr_avg, dst, SomeThresh, hlines3, vlines3);
 
+        timer_log("time_line_filter");
 
-
-        increaseContrast(&src_gray, &eq_img);
+        increaseContrast( src_gray, eq_img);
         // equalizeHist(src_gray, eq_img);
         // eq_img = src_gray;
 
@@ -1262,10 +1241,13 @@ int main(int argc, char *argv[])
 
         timer_log("time_blend");
 */
-
-        cv::imshow("Frame",dst);
+        Mat dst_resize;
+        cv::resize(dst, dst_resize, Size(640,480));
+        
+        cv::imshow("Frame",dst_resize);
 //        cv::imshow("Canny",edges);
-        cv::imshow("eq_img",eq_img);
+        cv::resize(eq_img, dst_resize, Size(640,480));
+        cv::imshow("eq_img",dst_resize);
 /*
         cv::imshow("Cam",frame);
 */
