@@ -700,7 +700,7 @@ char getPixelAtPoint(Mat &eq_img, Point &p, int delta) {
 
   AutoBuffer<int> _hstb(hst_len);
   int *hstb = _hstb;
-  memset(hstb,0,hst_len);
+  memset(hstb,0,hst_len*sizeof(int));
   for(int i=0;i<hst_len-1;i++) {
     hstb[i]=hst[i]+hst[i+1];
   }
@@ -895,7 +895,7 @@ int main(int argc, char *argv[])
 
     _sock = initSocket(argc, argv);
 
-    cv::VideoCapture cap(0);
+    cv::VideoCapture cap(1);
 //    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
     // cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
 //    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
