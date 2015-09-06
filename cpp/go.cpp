@@ -852,7 +852,7 @@ FILE * initSocket(int argc, char *argv[]) {
 
   if (e < 0) {
     printf("\n\nError connecting to %s: %d\n\n", addr_str, e);
-    // exit(1);
+     exit(1);
   }
 
   FILE *fd = fdopen(sock_fd, "w");
@@ -898,7 +898,7 @@ int main(int argc, char *argv[])
     cv::VideoCapture cap(1);
 //    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
     // cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
-//    cap.set(CV_CAP_PROP_FRAME_HEIGHT, 720);
+//    cap.set(CV_CAP_PRP_FRAME_HEIGHT, 720);
     // cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
 
 
@@ -977,7 +977,7 @@ int main(int argc, char *argv[])
           frame_tm.create( frame.size(), frame.type() );
           frame.copyTo(frame_tm);
         } else {
-          double t=0.20;
+          double t=0.50;
           addWeighted(frame, t, frame_tm, (1.0-t), 0, frame_tm);
         }
 
@@ -1120,8 +1120,8 @@ int main(int argc, char *argv[])
             }
             printf("\n");
           }
-
-          // sendToSocket(_sock, board);
+          
+           sendToSocket(_sock, board);
 
         }
 
@@ -1242,11 +1242,11 @@ int main(int argc, char *argv[])
         timer_log("time_blend");
 */
         Mat dst_resize;
-        cv::resize(dst, dst_resize, Size(640,480));
+        cv::resize(dst, dst_resize, Size(1280,960));
         
         cv::imshow("Frame",dst_resize);
 //        cv::imshow("Canny",edges);
-        cv::resize(eq_img, dst_resize, Size(640,480));
+        cv::resize(eq_img, dst_resize, Size(1280,960));
         cv::imshow("eq_img",dst_resize);
 /*
         cv::imshow("Cam",frame);
