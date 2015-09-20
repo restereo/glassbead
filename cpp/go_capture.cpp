@@ -37,14 +37,14 @@ void *captureThreadMain(void *t_data) {
     cv::Mat src_gray;
     cv::Mat edges;
   
-//    cv::VideoCapture cap(1);
+    cv::VideoCapture cap(0);
 //    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
     // cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
 //    cap.set(CV_CAP_PRP_FRAME_HEIGHT, 720);
     // cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
 
 
-    cv::VideoCapture cap("./video_goban_1280x960_1.avi");
+//    cv::VideoCapture cap("./video_goban_1280x960_1.avi");
 
     int frame_width=    cap.get(CV_CAP_PROP_FRAME_WIDTH);
     int frame_height=   cap.get(CV_CAP_PROP_FRAME_HEIGHT);
