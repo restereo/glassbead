@@ -124,8 +124,78 @@ void HoughDiscreteV( const Mat &img, int max_dx, int dbx, int ddx, Mat &dst ) {
       dst.at<uchar>( (max_dx + (x - basex))/ddx, basex/dbx) = r/(float)height/2.0; 
     }
   }
-  
 }
+
+void HoughDiscreteV_( const Mat &img, int max_dx, int dbx, int ddx, Mat &dst) {
+  int i,j;
+  cv::AutoBuffer<short> _accum;
+  
+  CV_Assert( img.type() == CV_8UC1 );
+  
+  const uchar *image = img.ptr();
+  int step = (int)img.step;
+  int width = img.cols;
+  int height = img.rows;
+  
+  printf("HD: width:%d height:%d\n",width,height);
+  
+  int num_bx = width/dbx + 1;
+  int num_dx = (2*max_dx + 1)/ddx;
+  
+  if (dst.empty()) {
+    printf("dst_create: num_bx:%d, num_dx:%d\n", num_bx, num_dx);
+    dst.create( num_dx, num_bx, CV_32F );
+  }    
+
+  _accum.allocate((num_bx+2) * (num_dx+2));
+  short *accum = _accum;
+  memset( accum, 0, sizeof(accum[0]) * (num_bx+2) * (num_dx+2) );
+  
+  dst = Scalar::all(0);
+  for(int y=0;y<height;y++) {
+    for(int x=0;x<width;x++) {
+      if (image[y*step+x] == 0) continue;
+
+      //Bresenham? oh no?
+/*
+      int mdx = round((float)max_dx*y/height);
+      
+      int min_basex = max(0, x - mdx);
+      min_basex = dbx*floor(min_basex/dbx);
+      int max_basex = min(width-1, x + mdx);
+
+//      printf("(x,y)=(%d,%d) => basex = [%d, %d]\n", x,y, min_basex, max_basex);       
+*/
+      float y_h = (float)y / (float)height;
+
+      for(int _dx=0; _dx<num_dx; _dx+=1) {
+        int basex = x + round((float)_dx * ddx * y_h);
+
+        if (basex < 0) continue;
+        if (basex >= width) continue;
+ 
+        int bx = basex/dbx;
+
+        accum[ (_dx+1)*(num_bx+2) + bx+1]++;       
+//        dst.at<float>( (max_dx + dx) / ddx, basex / dbx)++;
+      }           
+    }
+  }
+
+/*
+  for(int basex=0; basex<width; basex+=dbx ) {
+//    printf("basex: %d [%d,%d]\n",basex, max(0,basex-max_dx), min(basex+max_dx, width));
+    for(int x=max(0, basex-max_dx); x<=min(basex+max_dx,width-1); x+=ddx) {
+
+      float r = (float)BresenhamLineIntegrate(basex, 0, x, height-1, img);
+      
+      dst.at<uchar>( (max_dx + (x - basex))/ddx, basex/dbx) = r/(float)height/2.0; 
+    }
+  }
+*/
+}
+
+
 
 
 void HoughImg( const Mat& img, float rho, float theta, Mat& dst ) {
@@ -376,8 +446,18 @@ int main(int argc, char *argv[])
 
         Mat hough;
 
-        HoughDiscreteV(edges, 100, 2, 2, hough);
+        HoughDiscreteV_(edges, 100, 2, 3, hough);
 
+        double _max, _min;
+        Point __max, __min;
+        minMaxLoc(hough, &_min, &_max, &__min, &__max);
+      
+      printf("max: %2.2f\n", _max);
+      
+        convertScaleAbs( hough/(_max/255),hough );
+
+
+      
         cv::resize(edges, dst_resize, Size(640,480));
         cv::imshow("Canny",dst_resize);
 
