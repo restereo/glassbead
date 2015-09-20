@@ -478,33 +478,53 @@ void sendToSocket(FILE* fd,vector<vector<char> >& buf) {
 }
 
 
+//time-averaging of frames;
+const double new_frame_weight = 0.50;
 
 
 
 int main(int argc, char *argv[])
 {
-    cv::Mat dst;
-    cv::Mat eq_img;
+    cv::Mat frame;
+    cv::Mat frame_tm;
+    cv::Mat gray;
     cv::Mat edges;
+
+
+    cv::Mat dst;
     cv::Mat edges_resize;
 
     FILE* _sock = initSocket(argc, argv);
 
+    //capture required to be in main thread
+//    cv::VideoCapture cap(0);
+//    cap.set(CV_CAP_PROP_FRAME_WIDTH,1280);
+    // cap.set(CV_CAP_PROP_FRAME_WIDTH,640);
+//    cap.set(CV_CAP_PRP_FRAME_HEIGHT, 720);
+    // cap.set(CV_CAP_PROP_FRAME_HEIGHT, 480);
+
+    cv::VideoCapture cap("./video_goban_1280x960_1.avi");
+
+    int frame_width=    cap.get(CV_CAP_PROP_FRAME_WIDTH);
+    int frame_height=   cap.get(CV_CAP_PROP_FRAME_HEIGHT);
+    printf("cap init: %dx%d\n", frame_width, frame_height);
+
+
     //init capture thread
     
-    pthread_t capture_thread;
-    struct capture_thread_data td;
-    td.ready = 0;
+    pthread_t hough_thread;
+    struct hough_thread_data td;
+    td.status = 0; 
 
     //init mutex
-    pthread_mutex_init(&(td.ready_mutex), NULL);
-    pthread_cond_init(&(td.ready_cond), NULL);
+    pthread_mutex_init(&(td.edges_mutex), NULL);
+    pthread_cond_init(&(td.edges_cond), NULL);
 
-    pthread_mutex_init(&(td.empty_mutex), NULL);
-    pthread_cond_init(&(td.empty_cond), NULL);
+    pthread_mutex_init(&(td.lines_mutex), NULL);
+    pthread_cond_init(&(td.lines_cond), NULL);
 
     //start after GUI init
-    int rc = pthread_create(&capture_thread, NULL, captureThreadMain, (void*)&td);
+    int rc = pthread_create(&hough_thread, NULL, houghThreadMain, (void*)&td);
     if (rc) {
       printf("Could not create capture thread!\n");
       exit(1);
@@ -516,25 +536,13 @@ int main(int argc, char *argv[])
 //    cv::VideoWriter video("mog.avi",CV_FOURCC('M','J','P','G'),12, cv::Size(frame_width,frame_height),true);
 
     cv::namedWindow("Frame");
-    cv::namedWindow("eq_img");
+    cv::namedWindow("Gray");
 
     cv::moveWindow("Frame", 0,0);
     cv::resizeWindow("Frame", 640, 480);
-    cv::moveWindow("eq_img", 640,0);
-    cv::resizeWindow("eq_img", 640, 480);
-/*
-    cv::moveWindow("Fore", 1024, 260);
-    cv::moveWindow("Clouds", 1024, 0);
-    cv::moveWindow("Cam", 1024, 520);
-*/
-/*
-    //prepare empty alpha frames
-    if (fog_alpha.empty()) {
-           fog_alpha.create(frame_height, frame_width, CV_8UC1);
-    }
-    fog_alpha = cv::Scalar::all(0);
+    cv::moveWindow("Gray", 640,0);
+    cv::resizeWindow("Gray", 640, 480);
 
-*/
 
     int lowTreshold = 25;
     float ratio = 3;
@@ -546,76 +554,109 @@ int main(int argc, char *argv[])
 
 
     struct timeval st;
-
+    int once = 1;
     
     for(;;i++)
     {
         timer_start(&st);
 
+        cap >> frame;
 
-        //get a frame from capture thread
-        pthread_mutex_lock(&(td.ready_mutex));
-        while (td.ready==0) 
-          pthread_cond_wait(&(td.ready_cond), &(td.ready_mutex));
+        if (frame_tm.empty()) {
+          frame_tm.create( frame.size(), frame.type() );
+          frame.copyTo(frame_tm);
+        } else {
+          addWeighted(frame, new_frame_weight, frame_tm, (1.0-new_frame_weight), 0, frame_tm);
+        }
+
+        cvtColor( frame_tm, gray, CV_BGR2GRAY );
+
+        blur( gray, edges, Size(3,3) );
+//1.1: canny
+//        Canny( edges, edges, lowTreshold, lowTreshold*ratio, kernel_size );
+
+//1.2: sobel
+        double scale = 1;
+        double delta = 0;
+        Mat edges_x, edges_y;
+
+        Sobel( gray, edges_x, CV_16S, 1, 0, 3, scale, delta, BORDER_DEFAULT);
+        Sobel( gray, edges_y, CV_16S, 0, 1, 3, scale, delta, BORDER_DEFAULT);
+
+//        Scharr( gray, edges_x, CV_16S, 1, 0, scale, delta, BORDER_DEFAULT);
+//        Scharr( gray, edges_y, CV_16S, 0, 1, scale, delta, BORDER_DEFAULT);
+
+        Mat abs_grad_x, abs_grad_y;
+        convertScaleAbs( edges_x, abs_grad_x );
+        convertScaleAbs( edges_y, abs_grad_y );
+
+        addWeighted( abs_grad_x, 0.5, abs_grad_y, 0.5, 0, edges);
+
+        timer_log(&st, "cap: time_sobel");
+
+        //for opencv/hough threshold is required
+        cv::threshold(edges, edges, 60, 255, 0);
+
+        int erosion_size = 3;
+        Mat element =getStructuringElement(MORPH_ELLIPSE,
+          Size(2*erosion_size+1,2*erosion_size+1),
+          Point(erosion_size,erosion_size));
+        cv:morphologyEx(edges, edges, MORPH_CLOSE, element);
+
+            erosion_size = 1;
+            element =getStructuringElement(MORPH_ELLIPSE,
+          Size(2*erosion_size+1,2*erosion_size+1),
+          Point(erosion_size,erosion_size));
+
+        cv::morphologyEx(edges, edges, MORPH_OPEN, element);
+
+        //increateContrast
+        increaseContrast( gray, gray);
+        // equalizeHist(src_gray, eq_img);
+        // eq_img = src_gray;
+
+        timer_log(&st, "cap: time_prepare_image");
+
+        //push edges for hough
+        pthread_mutex_lock(&(td.edges_mutex));
+        edges.copyTo(td.edges);
+        td.status |= TH_STATUS_HAVE_EDGES;
+        pthread_mutex_unlock(&(td.edges_mutex));
+        pthread_cond_signal(&(td.edges_cond));
+
+        timer_log(&st, "cap: time push edges");
         
+        if (once) {
+          once = 0;
+          continue;
+        }
 
-        timer_log(&st, "proc: wait for a frame");
+        //get lines from process thread
+        pthread_mutex_lock(&(td.lines_mutex));
+        while ((td.status & TH_STATUS_HAVE_LINES) == 0) 
+          pthread_cond_wait(&(td.lines_cond), &(td.lines_mutex));
+
+        timer_log(&st, "cap: wait for lines");
+
+        vector<Vec4i> lines = td.lines;
+        td.status = td.status & ~TH_STATUS_HAVE_LINES;
+        pthread_mutex_unlock(&(td.lines_mutex));
+
+
     
         if (dst.empty()) {
-          dst.create( td.frame.size(), td.frame.type() );
+          dst.create( frame.size(), frame.type() );
         }
-        if (eq_img.empty()) {
-          eq_img.create( td.gray.size(), td.gray.type() );
-        }
-        if (eq_img.empty()) {
-          edges.create( td.edges.size(), td.edges.type() );
-        }
-        td.frame.copyTo(dst);
-        td.gray.copyTo(eq_img);
-        td.edges.copyTo(edges);
+        frame.copyTo(dst);
         
         //replace with copy if required
         cv::resize(td.edges, edges_resize, Size(640,480));
 
         total_frames++;
 
-        td.ready = 0;
-        //unlock
-        pthread_mutex_unlock(&(td.ready_mutex));
+        printf("cap: lines: %d\n", lines.size());
 
-
-        pthread_cond_signal(&(td.empty_cond));
-
-
-        timer_log(&st, "proc: get frame");
-
-//2: hough
-
-        int maxangle = 360; //360 => 0.5 degree angle step
-        double rho=1.0;
-        double theta = CV_PI/(float)maxangle;
-
-
-        //use smaller
-        Mat new_edges;
-        cv::resize(edges, new_edges, Size(edges.cols/2,edges.rows/2));
-        
-        int threshold = 120/2;
-        vector<Vec4i> lines;  /* minLineLength, maxLineMissingPart */
-        HoughLinesP(new_edges, lines, rho, theta, threshold, 270/2, 40/2);
-        printf("hough.lines: %d\n", lines.size());
-
-
-        timer_log(&st, "proc: hough & unlock");
-
-
-        //fix scaled coords
-        for(size_t j=0; j<lines.size();j++) {
-          lines[j][0] = 2.0*lines[j][0];
-          lines[j][1] = 2.0*lines[j][1];
-          lines[j][2] = 2.0*lines[j][2];
-          lines[j][3] = 2.0*lines[j][3];
-        }
+        timer_log(&st, "cap: got lines");
 
 /*
         for(size_t j=0; j<lines.size(); j++) {
@@ -623,12 +664,14 @@ int main(int argc, char *argv[])
           line(dst, Point(l[0], l[1]), Point(l[2], l[3]), Scalar(255,0,0), 1, 8);
         }
 */
+
+        const int maxangle = 360; //see also 
         
         /* fixme: only supports 180 buckets */
         float maxA = findBestAngle(lines, maxangle); //180/2 degree values
 
-        vector<Vec2f> hlines = findHLines(lines, 3.0, maxA);
-        vector<Vec2f> vlines = findHLines(lines, 3.0, maxA+90);
+        cv::vector<Vec2f> hlines = findHLines(lines, 3.0, maxA);
+        cv::vector<Vec2f> vlines = findHLines(lines, 3.0, maxA+90);
 
 //        vector<Vec2f> hlines2 = approxHLines(hlines, 0.3);
         printf("lines: h.size=%d v.size=%d\n", hlines.size(), vlines.size());
@@ -681,7 +724,7 @@ int main(int argc, char *argv[])
           good_frames++;
         // char board[19][19];
 
-          vector <vector <char> > board = getBoard(eq_img, hlines3, vlines3);
+          vector <vector <char> > board = getBoard(gray, hlines3, vlines3);
 
           printf("\n");
           for (int i = 0; i < 19; i++)
@@ -812,11 +855,8 @@ int main(int argc, char *argv[])
         cv::resize(dst, dst_resize, Size(640,480));
         
         cv::imshow("Frame",dst_resize);
-//        cv::imshow("Canny",edges);
-        cv::imshow("eq_img",edges_resize);
-/*
-        cv::imshow("Cam",frame);
-*/
+        cv::imshow("Gray",edges_resize);
+
         timer_log(&st, "time_imshow");
         printf("frames good/total: %6d/%6d %2.2f\n", good_frames, total_frames, (100.0*(float)good_frames/(float)total_frames));
 /*

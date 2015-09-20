@@ -295,7 +295,7 @@ vector<Vec2f> findHLines(vector<Vec4i> lines, float ang_threshold, float maxA) {
         return hlines;
 }
 
-vector<Vec2f> filterHLines(vector<Vec2f> hlines, float merge_dist) {
+vector<Vec2f> filterHLines(cv::vector<Vec2f> hlines, float merge_dist) {
         vector<Vec2f> hlines2;
 
         Vec2f last_lp = Vec2f(0,0);
